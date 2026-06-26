@@ -30,8 +30,7 @@ const geography =
 
 new MultiModelRouterStack(app, "MultiModelRouter", {
   description:
-    "Multi-model LLM router with prompt classification and cross-region inference" +
-    (geography ? ` (geography: ${geography})` : " (simple: Haiku, medium: Sonnet 3.5, hard: Sonnet 4)"),
+        "Critical Operations AI Model Router — multi-provider load balancing for APRA-regulated critical operations (simple: Haiku, medium: Sonnet 4, complex: Opus 4.8)",
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION || "us-east-1",

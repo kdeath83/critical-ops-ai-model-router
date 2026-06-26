@@ -1,9 +1,9 @@
 {
-  "name": "aws-multi-model-router",
+  "name": "critical-ops-ai-model-router",
   "version": "1.0.0",
-  "description": "Multi-model LLM router with prompt classification and cross-region inference on AWS Bedrock",
+  "description": "Multi-model AI router for APRA-regulated critical operations — reduces provider concentration risk via weighted load balancing across frontier models on AWS Bedrock, OpenAI-compatible endpoints, and native Bedrock models.",
   "bin": {
-    "aws-multi-model-router": "bin/app.js"
+    "critical-ops-ai-model-router": "bin/app.js"
   },
   "scripts": {
     "build": "tsc",
