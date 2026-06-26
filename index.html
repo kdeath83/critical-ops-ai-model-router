@@ -555,6 +555,7 @@ const state = {
   logId: 0,
   timer: null,
   animTimer: null,
+  demoLoopId: null,
 }
 
 const PROVIDER_ICONS = {bedrock:'☁️', openai:'🤖', kimi:'🌙'}
@@ -566,22 +567,35 @@ function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;')
 }
 
+// ─── Tier display mapping ────────────────────────────
+function displayTier(t){ return t === 'hard' ? 'Complex' : t.charAt(0).toUpperCase() + t.slice(1) }
+
 // ─── Init ──────────────────────────────────────────────
 init()
 
 function init(){
   updateUI()
-  // Draw diagonal paths after layout settles
   setTimeout(() => drawBranchDiags(), 100)
-  // Redraw on resize
   window.addEventListener('resize', () => drawBranchDiags())
-  // Auto-simulate a batch on load for demo
-  setTimeout(() => simulateBatch(), 500)
+  // Start perpetual demo cycling
+  startDemoLoop()
+}
+
+function startDemoLoop(){
+  if(state.demoLoopId) clearTimeout(state.demoLoopId)
+  function tick(){
+    if(state.killed || state.mode === 'live') return
+    simulateBatch()
+    state.demoLoopId = setTimeout(tick, 3000 + Math.random() * 3000)
+  }
+  state.demoLoopId = setTimeout(tick, 500)
 }
 
 // ─── Mode toggle ──────────────────────────────────────
 function toggleMode(){
   if(state.mode === 'demo'){
+    // Switching to Live: stop demo loop
+    if(state.demoLoopId){ clearTimeout(state.demoLoopId); state.demoLoopId = null }
     const url = prompt('Enter API endpoint URL:', state.apiBase || 'https://<api-id>.execute-api.us-east-1.amazonaws.com')
     if(!url) return
     state.apiBase = url.replace(/\/+$/,'')
@@ -589,15 +603,14 @@ function toggleMode(){
     document.getElementById('modeToggle').textContent = '🎮 Demo'
     document.getElementById('statusDot').className = 'status-dot live'
     document.getElementById('statusText').textContent = 'live'
-    // Start polling
-    if(state.timer) clearInterval(state.timer)
   } else {
     state.mode = 'demo'
     state.apiBase = ''
     document.getElementById('modeToggle').textContent = '🔌 Live'
     document.getElementById('statusDot').className = 'status-dot demo'
     document.getElementById('statusText').textContent = 'demo'
-    if(state.timer) clearInterval(state.timer)
+    // Restart perpetual demo loop
+    startDemoLoop()
   }
 }
 
@@ -725,6 +738,8 @@ function toggleKill(){
     if(matrixAnimId){ cancelAnimationFrame(matrixAnimId); matrixAnimId = null }
     const mc = document.getElementById('matrixCanvas')
     if(mc){ mc.classList.remove('active'); mc.getContext('2d').clearRect(0,0,mc.width,mc.height) }
+    // Stop demo loop
+    if(state.demoLoopId){ clearTimeout(state.demoLoopId); state.demoLoopId = null }
     document.getElementById('promptInput').disabled = true
     document.getElementById('sendBtn').disabled = true
   } else {
@@ -738,6 +753,8 @@ function toggleKill(){
     } else {
       document.getElementById('statusDot').className = 'status-dot demo'
       document.getElementById('statusText').textContent = 'demo'
+      // Restart perpetual demo loop
+      startDemoLoop()
     }
     document.getElementById('promptInput').disabled = false
     document.getElementById('sendBtn').disabled = false
@@ -1082,7 +1099,7 @@ function renderLog(){
     return `<tr onclick="showDetail(${req.id})" style="cursor:pointer">
       <td>${time}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${prompt}</td>
-      <td><span class="tier-badge ${tierClass}">${escapeHtml(req.tier)}</span></td>
+      <td><span class="tier-badge ${tierClass}">${escapeHtml(displayTier(req.tier))}</span></td>
       <td><span class="provider-badge"><span class="provider-dot ${providerClass}"></span>${escapeHtml(req.provider)}</span></td>
       <td style="color:var(--text)">${escapeHtml(req.model)}</td>
       <td><span style="font-size:10px;color:var(--text-muted)">${req.lbWeight || 100}%</span></td>
@@ -1163,7 +1180,7 @@ function showDetail(id){
   const rows = [
     ['Time', req.time.toLocaleTimeString()],
     ['Prompt', escapeHtml(req.prompt)],
-    ['Tier', `<span class="tier-badge tier-${req.tier}">${escapeHtml(req.tier)}</span>`],
+    ['Tier', `<span class="tier-badge tier-${req.tier}">${escapeHtml(displayTier(req.tier))}</span>`],
     ['Provider', escapeHtml(req.provider)],
     ['Model', escapeHtml(req.model)],
     ['LB Weight', `${req.lbWeight || 100}%`],
@@ -1209,6 +1226,8 @@ function resetLogs(){
   if(matrixAnimId){ cancelAnimationFrame(matrixAnimId); matrixAnimId = null }
   const mc = document.getElementById('matrixCanvas')
   if(mc){ mc.classList.remove('active'); mc.getContext('2d').clearRect(0,0,mc.width,mc.height) }
+  // Restart demo loop if not killed
+  if(!state.killed && state.mode === 'demo') startDemoLoop()
   document.getElementById('classifierResult').textContent = '—'
   document.getElementById('routerResult').textContent = '—'
   document.getElementById('responseLatency').textContent = '—'
