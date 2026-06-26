@@ -75,27 +75,27 @@ body{min-height:100vh;display:flex;flex-direction:column}
 
 /* ── Matrix Canvas ──────────────────────────────────── */
 .matrix-canvas{
-  position:absolute;top:0;left:0;width:100%;height:100%;
-  pointer-events:none;z-index:10;opacity:0;
+  position:absolute;top:0;left:0;
+  pointer-events:none;z-index:5;opacity:0;
   transition:opacity .3s;border-radius:var(--radius)
 }
 .matrix-canvas.active{opacity:1}
 
 /* ── Pipeline ───────────────────────────────────────── */
 .pipeline-wrap{
-  padding:24px 24px 8px;position:relative;overflow:hidden
+  padding:24px 24px 8px;position:relative;overflow:visible
 }
 .pipeline{
   display:flex;align-items:center;gap:0;
-  background:var(--bg-surface);border-radius:var(--radius);
+  background:var(--bg-surface);border-radius:var(--radius) var(--radius) 0 0;
   padding:20px 24px;border:1px solid rgba(255,255,255,.04);
-  position:relative;min-height:70px;overflow:hidden
+  position:relative;min-height:70px;overflow:visible
 }
 .converge-row{
   margin-top:0;border-top:0;
   border-radius:0 0 var(--radius) var(--radius);
   padding:8px 24px 16px;min-height:54px;
-  border-top:none
+  border-top:none;overflow:visible
 }
 .pipeline-stage{
   display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -130,14 +130,14 @@ body{min-height:100vh;display:flex;flex-direction:column}
 /* ── Branch Grid ─────────────────────────────────────── */
 .branch-grid{
   display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;
-  background:var(--bg-surface);padding:6px 24px 12px;
+  background:var(--bg-surface);padding:16px 24px 20px;
   border-left:1px solid rgba(255,255,255,.04);
   border-right:1px solid rgba(255,255,255,.04);
-  position:relative
+  position:relative;z-index:1
 }
 .branch-lane{
   display:flex;flex-direction:column;align-items:center;gap:6px;
-  position:relative;padding:4px 0;z-index:2
+  position:relative;padding:4px 0;z-index:7
 }
 
 /* Visible connection paths between stages */
@@ -167,7 +167,7 @@ body{min-height:100vh;display:flex;flex-direction:column}
 /* Diagonal path lines from Router to lanes and lanes to Response */
 .branch-diag{
   position:absolute;top:0;left:0;right:0;bottom:0;
-  pointer-events:none;z-index:1
+  pointer-events:none;z-index:6
 }
 .branch-diag-line{
   position:absolute;height:2px;background:var(--bg-hover);
@@ -772,49 +772,46 @@ function drawBranchDiags(){
   const lanes = grid.querySelectorAll('.branch-lane')
   if(lanes.length < 3) return
 
-  // Get the Router stage position (above the grid, centered)
+  // Router: use its bottom-center relative to grid
   const routerEl = document.querySelector('[data-stage="router"]')
   if(!routerEl) return
-  const routerRect = routerEl.getBoundingClientRect()
-  const routerCenterX = routerRect.right - gridRect.left - 10
-  const routerY = -8 // above grid top
+  const rRect = routerEl.getBoundingClientRect()
+  const routerX = (rRect.left + rRect.right) / 2 - gridRect.left
+  const routerY = rRect.bottom - gridRect.top + 4
 
-  // Get each lane's center top and bottom
+  // Response: use its top-center relative to grid
+  const respEl = document.querySelector('[data-stage="response"]')
+  if(!respEl) return
+  const eRect = respEl.getBoundingClientRect()
+  const respX = (eRect.left + eRect.right) / 2 - gridRect.left
+  const respY = eRect.top - gridRect.top - 4
+
   lanes.forEach(lane => {
-    const card = lane.querySelector('.branch-card')
-    if(!card) return
     const laneRect = lane.getBoundingClientRect()
-    const cardRect = card.getBoundingClientRect()
-    const laneCenterX = (laneRect.left + laneRect.right) / 2 - gridRect.left
-    const cardTop = cardRect.top - gridRect.top
-    const cardBottom = cardRect.bottom - gridRect.top
+    const laneCX = (laneRect.left + laneRect.right) / 2 - gridRect.left
+    const card = lane.querySelector('.branch-card')
+    const cardTop = card ? card.getBoundingClientRect().top - gridRect.top : laneRect.top - gridRect.top + 20
+    const cardBot = card ? card.getBoundingClientRect().bottom - gridRect.top : laneRect.bottom - gridRect.top - 10
 
-    // Top diagonal: from Router to lane card top
-    const lineTop = document.createElement('div')
-    lineTop.className = 'branch-diag-line'
-    lineTop.dataset.diag = lane.dataset.tier + '-top'
-    const dxTop = laneCenterX - routerCenterX
-    const dyTop = cardTop - routerY
-    const lenTop = Math.sqrt(dxTop*dxTop + dyTop*dyTop)
-    const angleTop = Math.atan2(dyTop, dxTop) * 180 / Math.PI
-    lineTop.style.cssText = `left:${routerCenterX}px;top:${routerY}px;width:${lenTop}px;transform:rotate(${angleTop}deg)`
-    diag.appendChild(lineTop)
+    // Top diagonal: Router output → card top
+    const dxT = laneCX - routerX
+    const dyT = cardTop - routerY
+    const lenT = Math.sqrt(dxT*dxT + dyT*dyT)
+    const angT = Math.atan2(dyT, dxT) * 180 / Math.PI
+    const t = document.createElement('div')
+    t.className = 'branch-diag-line'; t.dataset.diag = lane.dataset.tier + '-top'
+    t.style.cssText = `left:${routerX}px;top:${routerY}px;width:${lenT}px;transform:rotate(${angT}deg)`
+    diag.appendChild(t)
 
-    // Bottom diagonal: from lane card bottom to Response (below grid)
-    const respY = gridRect.height + 4
-    const dxBot = 0 // converge to center
-    const dyBot = respY - cardBottom
-    // Converge toward center column
-    const convergeX = gridRect.width / 2
-    const dxConv = convergeX - laneCenterX
-    const dyConv = respY - cardBottom
-    const lenBot = Math.sqrt(dxConv*dxConv + dyConv*dyConv)
-    const angleBot = Math.atan2(dyConv, dxConv) * 180 / Math.PI
-    const lineBot = document.createElement('div')
-    lineBot.className = 'branch-diag-line'
-    lineBot.dataset.diag = lane.dataset.tier + '-bot'
-    lineBot.style.cssText = `left:${laneCenterX}px;top:${cardBottom}px;width:${lenBot}px;transform:rotate(${angleBot}deg)`
-    diag.appendChild(lineBot)
+    // Bottom diagonal: card bottom → Response input
+    const dxB = respX - laneCX
+    const dyB = respY - cardBot
+    const lenB = Math.sqrt(dxB*dxB + dyB*dyB)
+    const angB = Math.atan2(dyB, dxB) * 180 / Math.PI
+    const b = document.createElement('div')
+    b.className = 'branch-diag-line'; b.dataset.diag = lane.dataset.tier + '-bot'
+    b.style.cssText = `left:${laneCX}px;top:${cardBot}px;width:${lenB}px;transform:rotate(${angB}deg)`
+    diag.appendChild(b)
   })
 }
 
