@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Model LLM Router · Flow Dashboard</title>
+<style>
+/* ── Reset & Base ───────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-deep:#041625;
+  --bg-surface:#0a1e2f;
+  --bg-card:#0f2a40;
+  --bg-hover:#15334d;
+  --accent:#1a7dd4;
+  --accent-glow:rgba(26,125,212,.35);
+  --accent-dim:#0f5391;
+  --text:#e8edf2;
+  --text-dim:#8ba0b8;
+  --text-muted:#4e6e8a;
+  --green:#2ecc71;
+  --red:#e74c3c;
+  --yellow:#f39c12;
+  --purple:#9b59b6;
+  --matrix:#00ff41;
+  --matrix-dim:rgba(0,255,65,.15);
+  --matrix-glow:rgba(0,255,65,.4);
+  --radius:10px;
+  --font:'Inter','SF Pro','-apple-system',system-ui,sans-serif;
+}
+html{background:var(--bg-deep);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5}
+body{min-height:100vh;display:flex;flex-direction:column}
+
+/* ── Scrollbar ─────────────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg-deep)}
+::-webkit-scrollbar-thumb{background:var(--bg-hover);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent-dim)}
+
+/* ── Header ─────────────────────────────────────────── */
+.header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 24px;background:var(--bg-surface);border-bottom:1px solid rgba(255,255,255,.04);
+  position:sticky;top:0;z-index:100
+}
+.header-left{display:flex;align-items:center;gap:14px}
+.header-logo{
+  width:34px;height:34px;border-radius:8px;
+  background:linear-gradient(135deg,var(--accent),#2b9aff);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:16px;color:#fff;box-shadow:0 0 20px var(--accent-glow)
+}
+.header-title h1{font-size:16px;font-weight:600;letter-spacing:-.02em}
+.header-title span{font-size:11px;color:var(--text-dim);font-weight:400}
+.header-right{display:flex;align-items:center;gap:12px}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.status-dot.live{background:var(--green);box-shadow:0 0 8px rgba(46,204,113,.4);animation:pulse 2s infinite}
+.status-dot.demo{background:var(--yellow);box-shadow:0 0 8px rgba(243,156,18,.3)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.header-btn{
+  background:var(--bg-card);border:1px solid rgba(255,255,255,.06);color:var(--text);
+  padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:var(--font);
+  transition:all .15s
+}
+.header-btn:hover{background:var(--bg-hover);border-color:var(--accent)}
+.header-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.header-btn.primary:hover{background:#1e8de0}
+.header-btn.danger{
+  background:rgba(231,76,60,.15);border-color:var(--red);color:var(--red);
+  animation:kill-pulse 2s ease-in-out infinite
+}
+.header-btn.danger:hover{background:rgba(231,76,60,.25)}
+.header-btn.danger.active{background:var(--red);color:#fff;animation:none}
+@keyframes kill-pulse{0%,100%{box-shadow:0 0 0 transparent}50%{box-shadow:0 0 12px rgba(231,76,60,.4)}}
+
+/* ── Matrix Canvas ──────────────────────────────────── */
+.matrix-canvas{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  pointer-events:none;z-index:10;opacity:0;
+  transition:opacity .3s;border-radius:var(--radius)
+}
+.matrix-canvas.active{opacity:1}
+
+/* ── Pipeline ───────────────────────────────────────── */
+.pipeline-wrap{
+  padding:24px 24px 8px;position:relative;overflow:hidden
+}
+.pipeline{
+  display:flex;align-items:center;gap:0;
+  background:var(--bg-surface);border-radius:var(--radius);
+  padding:20px 24px;border:1px solid rgba(255,255,255,.04);
+  position:relative;min-height:70px;overflow:hidden
+}
+.converge-row{
+  margin-top:0;border-top:0;
+  border-radius:0 0 var(--radius) var(--radius);
+  padding:8px 24px 16px;min-height:54px;
+  border-top:none
+}
+.pipeline-stage{
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  flex-shrink:0;position:relative;z-index:2;cursor:pointer;
+  transition:transform .2s;min-width:60px
+}
+.pipeline-stage:hover{transform:translateY(-2px)}
+.pipeline-stage .icon{
+  width:42px;height:42px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;background:var(--bg-card);
+  border:1px solid rgba(255,255,255,.06);color:var(--text-dim);
+  transition:all .3s;position:relative
+}
+.pipeline-stage.active .icon{
+  border-color:var(--accent);color:var(--accent);
+  background:rgba(26,125,212,.12);box-shadow:0 0 16px var(--accent-glow)
+}
+.pipeline-stage .label{font-size:10px;color:var(--text-dim);font-weight:500;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.pipeline-stage .sub{font-size:9px;color:var(--text-muted)}
+.pipeline-arrow{
+  flex:1;min-width:40px;height:2px;background:var(--bg-hover);
+  position:relative;z-index:1;margin:0 4px 20px
+}
+.pipeline-arrow::after{
+  content:'';position:absolute;right:-4px;top:-3px;
+  border:4px solid transparent;border-left-color:var(--bg-hover)
+}
+.pipeline-arrow.active{background:var(--accent)}
+.pipeline-arrow.active::after{border-left-color:var(--accent)}
+
+/* ── Branch Grid ─────────────────────────────────────── */
+.branch-grid{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;
+  background:var(--bg-surface);padding:6px 24px 12px;
+  border-left:1px solid rgba(255,255,255,.04);
+  border-right:1px solid rgba(255,255,255,.04);
+  position:relative
+}
+.branch-lane{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  position:relative;padding:4px 0;z-index:2
+}
+
+/* Visible connection paths between stages */
+.branch-path{
+  width:100%;height:3px;background:var(--bg-hover);
+  position:relative;border-radius:2px;
+  transition:background .3s, box-shadow .3s;
+  z-index:2
+}
+.branch-path.top::before{
+  content:'';position:absolute;left:-10px;top:-3px;
+  width:10px;height:3px;background:var(--bg-hover);border-radius:2px;
+  transition:background .3s
+}
+.branch-path::after{
+  content:'';position:absolute;right:-5px;top:-4px;
+  border:5px solid transparent;border-left-color:var(--bg-hover);
+  transition:border-left-color .3s
+}
+.branch-path.active{
+  background:var(--matrix);
+  box-shadow:0 0 10px var(--matrix-glow)
+}
+.branch-path.active::after{border-left-color:var(--matrix)}
+.branch-path.top.active::before{background:var(--matrix);box-shadow:0 0 8px var(--matrix-glow)}
+
+/* Diagonal path lines from Router to lanes and lanes to Response */
+.branch-diag{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  pointer-events:none;z-index:1
+}
+.branch-diag-line{
+  position:absolute;height:2px;background:var(--bg-hover);
+  transform-origin:left center;
+  transition:background .3s, box-shadow .3s
+}
+.branch-diag-line.active{
+  background:var(--matrix);
+  box-shadow:0 0 8px var(--matrix-glow)
+}
+
+/* Branch cards */
+.branch-card{
+  background:var(--bg-card);border-radius:8px;
+  border:1px solid rgba(255,255,255,.05);
+  padding:10px 14px;width:100%;max-width:220px;
+  transition:all .3s;cursor:default;
+  box-shadow:0 0 0 transparent
+}
+.branch-lane.active .branch-card{
+  border-color:var(--matrix);
+  box-shadow:0 0 16px var(--matrix-glow), inset 0 0 16px var(--matrix-dim);
+  background:rgba(0,255,65,.06)
+}
+.branch-header{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:6px
+}
+.branch-weight{
+  font-size:10px;font-weight:600;
+  background:rgba(255,255,255,.05);padding:1px 6px;border-radius:4px;
+  color:var(--text-dim)
+}
+.branch-lane.active .branch-weight{
+  background:var(--matrix-dim);color:var(--matrix)
+}
+.branch-body{
+  display:flex;align-items:center;gap:8px
+}
+.branch-icon{font-size:14px;flex-shrink:0}
+.branch-model{font-size:12px;font-weight:600;color:var(--text)}
+.branch-lane.active .branch-model{color:var(--matrix)}
+.branch-provider{font-size:10px;color:var(--text-muted);margin-left:auto}
+.branch-lane.active .branch-provider{color:rgba(0,255,65,.7)}
+.branch-sub{font-size:9px;color:var(--text-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Dashboard Grid ─────────────────────────────────── */
+.dashboard{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;padding:8px 24px 24px;flex:1}
+
+.card{
+  background:var(--bg-surface);border-radius:var(--radius);
+  border:1px solid rgba(255,255,255,.04);padding:18px 20px;
+  transition:border-color .2s
+}
+.card:hover{border-color:rgba(255,255,255,.08)}
+.card h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);margin-bottom:12px}
+.card .stat{font-size:28px;font-weight:700;letter-spacing:-.03em}
+.card .stat-label{font-size:12px;color:var(--text-dim);margin-top:2px}
+
+/* Stats row */
+.stat-card{grid-column:span 3}
+.stat-card .stat-row{display:flex;align-items:baseline;gap:10px}
+.stat-card .change{font-size:12px;padding:2px 8px;border-radius:4px;font-weight:500}
+.change.up{background:rgba(46,204,113,.12);color:var(--green)}
+.change.down{background:rgba(231,76,60,.12);color:var(--red)}
+
+/* Chart area */
+.chart-card{grid-column:span 6}
+.chart-container{position:relative;height:140px}
+.bar-group{display:flex;align-items:flex-end;height:100%;gap:6px}
+.bar-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.bar-fill{width:100%;border-radius:4px 4px 0 0;transition:height .6s cubic-bezier(.22,1,.36,1);min-height:4px;position:relative}
+.bar-fill::after{content:attr(data-count);position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:var(--text);white-space:nowrap}
+.bar-label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px;text-align:center}
+
+/* Provider donut */
+.donut-card{grid-column:span 3}
+.donut-container{display:flex;align-items:center;gap:16px;height:120px}
+.donut-svg{width:100px;height:100px;flex-shrink:0}
+.donut-legend{flex:1;display:flex;flex-direction:column;gap:6px}
+.donut-item{display:flex;align-items:center;gap:8px;font-size:11px}
+.donut-item .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.donut-item .name{color:var(--text-dim)}
+.donut-item .pct{color:var(--text);font-weight:600;margin-left:auto}
+
+/* Log table */
+.log-card{grid-column:span 12}
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th{
+  text-align:left;padding:8px 12px;font-size:10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);
+  border-bottom:1px solid rgba(255,255,255,.04)
+}
+.log-table td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.03);color:var(--text-dim);white-space:nowrap}
+.log-table tr:hover td{background:var(--bg-hover)}
+.log-table tr:last-child td{border-bottom:none}
+.log-table .tier-badge{
+  display:inline-block;padding:1px 8px;border-radius:4px;font-size:10px;font-weight:600
+}
+.tier-simple{background:rgba(46,204,113,.12);color:var(--green)}
+.tier-medium{background:rgba(243,156,18,.12);color:var(--yellow)}
+.tier-hard{background:rgba(231,76,60,.12);color:var(--red)}
+.provider-badge{display:inline-flex;align-items:center;gap:4px}
+.provider-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.provider-bedrock{background:var(--accent)}
+.provider-openai{background:var(--green)}
+.provider-kimi{background:var(--purple)}
+.log-empty{text-align:center;padding:30px;color:var(--text-muted);font-size:13px}
+
+/* Input area */
+.input-card{grid-column:span 12;padding:14px 20px}
+.input-row{display:flex;gap:10px;align-items:center}
+.input-row input{
+  flex:1;background:var(--bg-card);border:1px solid rgba(255,255,255,.06);
+  padding:10px 14px;border-radius:6px;color:var(--text);font-size:13px;
+  font-family:var(--font);outline:none;transition:border-color .2s
+}
+.input-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.input-row input::placeholder{color:var(--text-muted)}
+.input-row button{
+  background:var(--accent);border:none;color:#fff;padding:10px 20px;
+  border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;
+  font-family:var(--font);transition:background .15s;white-space:nowrap
+}
+.input-row button:hover{background:#1e8de0}
+.input-row button:disabled{opacity:.5;cursor:not-allowed}
+
+/* Modal / detail popup */
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(4,22,37,.8);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.open{display:flex}
+.modal{
+  background:var(--bg-surface);border-radius:var(--radius);border:1px solid rgba(255,255,255,.06);
+  padding:24px;max-width:520px;width:90%;max-height:80vh;overflow-y:auto
+}
+.modal h2{font-size:16px;margin-bottom:8px}
+.modal .close{float:right;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px}
+.modal .detail-table{width:100%;font-size:13px;margin-top:12px}
+.modal .detail-table td{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.modal .detail-table td:first-child{color:var(--text-muted);width:120px}
+
+/* Utility */
+.fade-in{animation:fadeIn .4s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* Responsive */
+@media(max-width:900px){
+  .stat-card,.donut-card{grid-column:span 6}
+  .chart-card{grid-column:span 12}
+  .pipeline{overflow-x:auto;padding:16px}
+  .pipeline-stage .label{font-size:9px}
+  .branch-grid{grid-template-columns:1fr;gap:8px;padding:6px 16px 12px}
+  .branch-card{max-width:100%}
+  .branch-path.top::before{display:none}
+  .branch-diag{display:none}
+}
+@media(max-width:600px){
+  .stat-card,.donut-card{grid-column:span 12}
+  .dashboard{gap:12px;padding:8px 12px 12px}
+  .header{padding:12px 16px}
+  .pipeline-wrap{padding:12px 12px 4px}
+  .branch-grid{grid-template-columns:1fr;padding:4px 12px 10px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header class="header">
+  <div class="header-left">
+    <div class="header-logo">⟁</div>
+    <div class="header-title">
+      <h1>AI Model Router</h1>
+      <span>Multi-model · load-balanced inference flow</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText" style="font-size:12px;color:var(--text-dim)">demo</span>
+    <button class="header-btn" id="modeToggle" onclick="toggleMode()">🔌 Live</button>
+    <button class="header-btn danger" id="killBtn" onclick="toggleKill()">⏻ Kill</button>
+    <button class="header-btn" onclick="resetLogs()">✕ Clear</button>
+  </div>
+</header>
+
+<!-- ── Pipeline ── -->
+<div class="pipeline-wrap">
+  <!-- Common path (top row) -->
+  <div class="pipeline" id="pipeline">
+    <div class="pipeline-stage" data-stage="user">
+      <div class="icon">👤</div>
+      <span class="label">User</span>
+    </div>
+    <div class="pipeline-arrow" data-conn="user-gw"></div>
+    <div class="pipeline-stage" data-stage="api">
+      <div class="icon">⚡</div>
+      <span class="label">API GW</span>
+    </div>
+    <div class="pipeline-arrow" data-conn="gw-classifier"></div>
+    <div class="pipeline-stage" data-stage="classifier">
+      <div class="icon" id="classifierIcon">🧠</div>
+      <span class="label">Classifier</span>
+      <span class="sub" id="classifierResult">—</span>
+    </div>
+    <div class="pipeline-arrow" data-conn="classifier-router"></div>
+    <div class="pipeline-stage" data-stage="router">
+      <div class="icon">🔀</div>
+      <span class="label">Router</span>
+      <span class="sub" id="routerResult">—</span>
+    </div>
+  </div>
+
+  <!-- Branching lanes (3 tiers) -->
+  <div class="branch-grid" id="branchGrid">
+    <!-- Tier lane: Simple -->
+    <div class="branch-lane" data-tier="simple">
+      <div class="branch-path top" data-path="to-simple"></div>
+      <div class="branch-card" id="branchSimple">
+        <div class="branch-header">
+          <span class="tier-badge tier-simple">Simple</span>
+          <span class="branch-weight" id="simpleWeight">—</span>
+        </div>
+        <div class="branch-body">
+          <span class="branch-icon" id="simpleIcon">🌿</span>
+          <span class="branch-model" id="simpleModel">—</span>
+          <span class="branch-provider" id="simpleProvider">—</span>
+        </div>
+        <div class="branch-sub" id="simpleProfile">—</div>
+      </div>
+      <div class="branch-path" data-path="from-simple"></div>
+    </div>
+
+    <!-- Tier lane: Medium -->
+    <div class="branch-lane" data-tier="medium">
+      <div class="branch-path top" data-path="to-medium"></div>
+      <div class="branch-card" id="branchMedium">
+        <div class="branch-header">
+          <span class="tier-badge tier-medium">Medium</span>
+          <span class="branch-weight" id="mediumWeight">—</span>
+        </div>
+        <div class="branch-body">
+          <span class="branch-icon" id="mediumIcon">⚖️</span>
+          <span class="branch-model" id="mediumModel">—</span>
+          <span class="branch-provider" id="mediumProvider">—</span>
+        </div>
+        <div class="branch-sub" id="mediumProfile">—</div>
+      </div>
+      <div class="branch-path" data-path="from-medium"></div>
+    </div>
+
+    <!-- Tier lane: Complex -->
+    <div class="branch-lane" data-tier="hard">
+      <div class="branch-path top" data-path="to-hard"></div>
+      <div class="branch-card" id="branchHard">
+        <div class="branch-header">
+          <span class="tier-badge tier-hard">Complex</span>
+          <span class="branch-weight" id="hardWeight">—</span>
+        </div>
+        <div class="branch-body">
+          <span class="branch-icon" id="hardIcon">🔥</span>
+          <span class="branch-model" id="hardModel">—</span>
+          <span class="branch-provider" id="hardProvider">—</span>
+        </div>
+        <div class="branch-sub" id="hardProfile">—</div>
+      </div>
+      <div class="branch-path" data-path="from-hard"></div>
+    </div>
+  </div>
+
+  <!-- Diagonal path lines (SVG-like overlay) -->
+  <div class="branch-diag" id="branchDiag"></div>
+
+  <!-- Matrix Rain Canvas -->
+  <canvas id="matrixCanvas" class="matrix-canvas"></canvas>
+
+  <!-- Converge to response -->
+  <div class="pipeline converge-row" id="pipelineConverge">
+    <div class="pipeline-arrow" data-conn="converge"></div>
+    <div class="pipeline-stage" data-stage="response">
+      <div class="icon">✅</div>
+      <span class="label">Response</span>
+      <span class="sub" id="responseLatency">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Dashboard ── -->
+<div class="dashboard">
+
+  <!-- Input -->
+  <div class="card input-card fade-in">
+    <div class="input-row">
+      <input type="text" id="promptInput" placeholder="Type a prompt to route through the system..." autocomplete="off">
+      <button id="sendBtn" onclick="sendPrompt()">Send</button>
+      <button class="header-btn" onclick="simulateBatch()" style="border-color:var(--accent-dim);color:var(--accent)">🎲 Simulate</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="card stat-card fade-in">
+    <h3>Total Requests</h3>
+    <div class="stat-row"><span class="stat" id="totalRequests">0</span></div>
+    <div class="stat-label" id="totalPeriod">since page load</div>
+  </div>
+  <div class="card stat-card fade-in">
+    <h3>Simple</h3>
+    <div class="stat-row">
+      <span class="stat" id="simpleCount" style="color:var(--green)">0</span>
+      <span class="change up" id="simplePct">0%</span>
+    </div>
+    <div class="stat-label">Claude 3.5 Haiku · GPT-5.5 mini</div>
+  </div>
+  <div class="card stat-card fade-in">
+    <h3>Medium</h3>
+    <div class="stat-row">
+      <span class="stat" id="mediumCount" style="color:var(--yellow)">0</span>
+      <span class="change up" id="mediumPct">0%</span>
+    </div>
+    <div class="stat-label">Sonnet 4 · GPT-5.5</div>
+  </div>
+  <div class="card stat-card fade-in">
+    <h3>Complex</h3>
+    <div class="stat-row">
+      <span class="stat" id="hardCount" style="color:var(--red)">0</span>
+      <span class="change up" id="hardPct">0%</span>
+    </div>
+    <div class="stat-label">Opus 4.8 · GPT-5.5 Pro · Kimi 128k</div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card chart-card fade-in">
+    <h3>Requests over time (last 30s)</h3>
+    <div class="chart-container" id="chartContainer"></div>
+  </div>
+
+  <!-- Donut -->
+  <div class="card donut-card fade-in">
+    <h3>Provider Split</h3>
+    <div class="donut-container">
+      <svg class="donut-svg" viewBox="0 0 100 100" id="donutSvg">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="var(--bg-hover)" stroke-width="12"/>
+      </svg>
+      <div class="donut-legend" id="donutLegend">
+        <div class="donut-item"><span class="dot" style="background:var(--accent)"></span><span class="name">Bedrock</span><span class="pct">—</span></div>
+        <div class="donut-item"><span class="dot" style="background:var(--green)"></span><span class="name">OpenAI</span><span class="pct">—</span></div>
+        <div class="donut-item"><span class="dot" style="background:var(--purple)"></span><span class="name">Kimi</span><span class="pct">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="card log-card fade-in">
+    <h3>Request Log</h3>
+    <div style="overflow-x:auto">
+      <table class="log-table">
+        <thead>
+          <tr><th>Time</th><th>Prompt</th><th>Tier</th><th>Provider</th><th>Model</th><th>LB</th><th>Latency</th><th>Tokens</th></tr>
+        </thead>
+        <tbody id="logBody">
+          <tr><td colspan="8" class="log-empty">No requests yet — type a prompt or click Simulate</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal ── -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="close" onclick="closeModal()">✕</button>
+    <h2 id="modalTitle">Request Detail</h2>
+    <table class="detail-table" id="modalTable"></table>
+  </div>
+</div>
+
+<script>
+// ─── State ─────────────────────────────────────────────
+const state = {
+  mode: 'demo',         // 'demo' | 'live'
+  killed: false,        // killswitch engaged
+  abortController: null, // for live fetch cancellation
+  apiBase: '',
+  requests: [],
+  byTier: {simple:0, medium:0, hard:0},
+  byProvider: {bedrock:0, openai:0, kimi:0},
+  timeBuckets: [],      // last 30s
+  logId: 0,
+  timer: null,
+  animTimer: null,
+}
+
+const PROVIDER_ICONS = {bedrock:'☁️', openai:'🤖', kimi:'🌙'}
+const PROVIDER_COLORS = {bedrock:'#1a7dd4', openai:'#2ecc71', kimi:'#9b59b6'}
+
+// ─── HTML escaping (XSS prevention) ──────────────────
+function escapeHtml(s){
+  if(typeof s !== 'string') return s || ''
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;')
+}
+
+// ─── Init ──────────────────────────────────────────────
+init()
+
+function init(){
+  updateUI()
+  // Draw diagonal paths after layout settles
+  setTimeout(() => drawBranchDiags(), 100)
+  // Redraw on resize
+  window.addEventListener('resize', () => drawBranchDiags())
+  // Auto-simulate a batch on load for demo
+  setTimeout(() => simulateBatch(), 500)
+}
+
+// ─── Mode toggle ──────────────────────────────────────
+function toggleMode(){
+  if(state.mode === 'demo'){
+    const url = prompt('Enter API endpoint URL:', state.apiBase || 'https://<api-id>.execute-api.us-east-1.amazonaws.com')
+    if(!url) return
+    state.apiBase = url.replace(/\/+$/,'')
+    state.mode = 'live'
+    document.getElementById('modeToggle').textContent = '🎮 Demo'
+    document.getElementById('statusDot').className = 'status-dot live'
+    document.getElementById('statusText').textContent = 'live'
+    // Start polling
+    if(state.timer) clearInterval(state.timer)
+  } else {
+    state.mode = 'demo'
+    state.apiBase = ''
+    document.getElementById('modeToggle').textContent = '🔌 Live'
+    document.getElementById('statusDot').className = 'status-dot demo'
+    document.getElementById('statusText').textContent = 'demo'
+    if(state.timer) clearInterval(state.timer)
+  }
+}
+
+// ─── Send prompt ──────────────────────────────────────
+async function sendPrompt(){
+  if(state.killed) return
+  const input = document.getElementById('promptInput')
+  const text = input.value.trim()
+  if(!text) return
+
+  if(state.mode === 'live'){
+    await sendLivePrompt(text)
+  } else {
+    simulateRequest(text)
+  }
+  input.value = ''
+}
+
+async function sendLivePrompt(text){
+  if(state.killed) return
+  const btn = document.getElementById('sendBtn')
+  btn.disabled = true
+  btn.textContent = '…'
+  // Create abort controller for killswitch
+  state.abortController = new AbortController()
+  try{
+    const res = await fetch(`${state.apiBase}/invoke`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({prompt:text, tier:'auto'}),
+      signal: state.abortController.signal,
+    })
+    if(!res.ok){
+      addLogRow({error:`HTTP ${res.status}: ${res.statusText}`})
+      return
+    }
+    const data = await res.json()
+    addRequestLog(data, text)
+  }catch(e){
+    if(e.name === 'AbortError') return // killswitch, silent
+    addLogRow({error:e.message})
+  }
+  btn.disabled = false
+  btn.textContent = 'Send'
+  state.abortController = null
+}
+
+// ─── Simulation ────────────────────────────────────────
+const SAMPLE_PROMPTS = [
+  {text:'What is the capital of France?', tier:'simple', provider:'bedrock', model:'Claude 3.5 Haiku', profile:'us.anthropic.claude-3-5-haiku-20241022-v1:0'},
+  {text:'Extract all dates from this document', tier:'simple', provider:'bedrock', model:'Claude 3.5 Haiku'},
+  {text:'Explain the difference between REST and GraphQL', tier:'medium', provider:'bedrock', model:'Sonnet 4', profile:'us.anthropic.claude-sonnet-4-20250514-v1:0'},
+  {text:'Summarize the quarterly financial report', tier:'medium', provider:'openai', model:'GPT-5.5'},
+  {text:'Implement a binary search tree in Python with full test coverage', tier:'hard', provider:'bedrock', model:'Opus 4.8', profile:'us.anthropic.claude-opus-4-8'},
+  {text:'Design a distributed cache system with CAP theorem analysis', tier:'hard', provider:'openai', model:'GPT-5.5 Pro'},
+  {text:'Translate this legal document from English to Japanese', tier:'medium', provider:'bedrock', model:'Kimi K2.5', profile:'us.moonshotai.kimi-k2.5'},
+  {text:'Write a haiku about Kubernetes', tier:'simple', provider:'bedrock', model:'Kimi K2.5'},
+  {text:'Analyze the complexity of this algorithm and propose optimizations', tier:'hard', provider:'openai', model:'GPT-5.5 Pro'},
+]
+
+function simulateBatch(){
+  if(state.killed) return
+  const n = 3 + Math.floor(Math.random() * 4)
+  const indices = [...Array(SAMPLE_PROMPTS.length).keys()].sort(()=>Math.random()-.5).slice(0, n)
+  indices.forEach((i,idx)=>{
+    setTimeout(() => simulateRequest(SAMPLE_PROMPTS[i].text), idx * 600 + Math.random()*400)
+  })
+}
+
+function simulateRequest(text){
+  if(state.killed) return
+  // Find matching sample or random
+  let sample = SAMPLE_PROMPTS.find(s => s.text === text)
+  if(!sample) sample = SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)]
+
+  const tier = sample.tier
+  const provider = sample.provider
+  const model = sample.model
+  const latency = tier === 'simple' ? 800+Math.random()*600 : tier === 'medium' ? 1500+Math.random()*1000 : 3000+Math.random()*2000
+  const inTok = tier === 'simple' ? 20+Math.random()*80 : tier === 'medium' ? 150+Math.random()*350 : 500+Math.random()*1500
+  const outTok = tier === 'simple' ? 30+Math.random()*70 : tier === 'medium' ? 100+Math.random()*200 : 200+Math.random()*800
+
+  // Simulate load-balanced target selection (80:20 default split)
+  const lbWeight = Math.random() < 0.8 ? 80 : 20
+  const lbProvider = lbWeight === 80 ? 'bedrock' : (provider === 'kimi' ? 'kimi' : 'openai')
+  const lbModel = lbWeight === 80 ? model : (provider === 'kimi' ? 'moonshot-v1-8k' : 'gpt-4o-mini')
+
+  const result = {
+    success: true,
+    response: `Simulated response for: "${text.substring(0,40)}..."`,
+    routing: {
+      tier,
+      provider: lbProvider,
+      model_id: lbModel,
+      inference_profile: sample.profile || null,
+      mode: sample.profile ? 'profile' : 'direct',
+      latency_ms: Math.round(latency),
+      region: 'us-east-1',
+      lb_weight: lbWeight,
+    },
+    usage: {input_tokens: Math.round(inTok), output_tokens: Math.round(outTok), total_tokens: Math.round(inTok+outTok)},
+    classification: {tier, reason: `${tier} complexity detected`, token_estimate: Math.round(inTok*2)},
+    lb_targets: [
+      {tier:'simple', provider:'bedrock', model_id:'anthropic.claude-3-5-haiku-20241022-v1:0', weight:80},
+      {tier:'medium', provider:'bedrock', model_id:'anthropic.claude-sonnet-4-20250514-v1:0', weight:15},
+      {tier:'hard', provider:'bedrock', model_id:'anthropic.claude-opus-4-8', weight:5},
+    ],
+  }
+  addRequestLog(result, text)
+}
+
+// ─── Toggle killswitch ───────────────────────────────
+function toggleKill(){
+  const btn = document.getElementById('killBtn')
+  state.killed = !state.killed
+
+  if(state.killed){
+    btn.textContent = '⏻ Resume'
+    btn.classList.add('active')
+    document.getElementById('statusDot').className = 'status-dot'
+    document.getElementById('statusDot').style.background = 'var(--red)'
+    document.getElementById('statusDot').style.boxShadow = '0 0 8px rgba(231,76,60,.4)'
+    document.getElementById('statusText').textContent = 'STOPPED'
+    if(state.abortController){ state.abortController.abort(); state.abortController = null }
+    if(matrixAnimId){ cancelAnimationFrame(matrixAnimId); matrixAnimId = null }
+    const mc = document.getElementById('matrixCanvas')
+    if(mc){ mc.classList.remove('active'); mc.getContext('2d').clearRect(0,0,mc.width,mc.height) }
+    document.getElementById('promptInput').disabled = true
+    document.getElementById('sendBtn').disabled = true
+  } else {
+    btn.textContent = '⏻ Kill'
+    btn.classList.remove('active')
+    document.getElementById('statusDot').style.background = ''
+    document.getElementById('statusDot').style.boxShadow = ''
+    if(state.mode === 'live'){
+      document.getElementById('statusDot').className = 'status-dot live'
+      document.getElementById('statusText').textContent = 'live'
+    } else {
+      document.getElementById('statusDot').className = 'status-dot demo'
+      document.getElementById('statusText').textContent = 'demo'
+    }
+    document.getElementById('promptInput').disabled = false
+    document.getElementById('sendBtn').disabled = false
+  }
+}
+
+// ─── Draw diagonal paths ─────────────────────────────
+function drawBranchDiags(){
+  const grid = document.getElementById('branchGrid')
+  const diag = document.getElementById('branchDiag')
+  if(!grid || !diag) return
+  diag.innerHTML = ''
+
+  const gridRect = grid.getBoundingClientRect()
+  const lanes = grid.querySelectorAll('.branch-lane')
+  if(lanes.length < 3) return
+
+  // Get the Router stage position (above the grid, centered)
+  const routerEl = document.querySelector('[data-stage="router"]')
+  if(!routerEl) return
+  const routerRect = routerEl.getBoundingClientRect()
+  const routerCenterX = routerRect.right - gridRect.left - 10
+  const routerY = -8 // above grid top
+
+  // Get each lane's center top and bottom
+  lanes.forEach(lane => {
+    const card = lane.querySelector('.branch-card')
+    if(!card) return
+    const laneRect = lane.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    const laneCenterX = (laneRect.left + laneRect.right) / 2 - gridRect.left
+    const cardTop = cardRect.top - gridRect.top
+    const cardBottom = cardRect.bottom - gridRect.top
+
+    // Top diagonal: from Router to lane card top
+    const lineTop = document.createElement('div')
+    lineTop.className = 'branch-diag-line'
+    lineTop.dataset.diag = lane.dataset.tier + '-top'
+    const dxTop = laneCenterX - routerCenterX
+    const dyTop = cardTop - routerY
+    const lenTop = Math.sqrt(dxTop*dxTop + dyTop*dyTop)
+    const angleTop = Math.atan2(dyTop, dxTop) * 180 / Math.PI
+    lineTop.style.cssText = `left:${routerCenterX}px;top:${routerY}px;width:${lenTop}px;transform:rotate(${angleTop}deg)`
+    diag.appendChild(lineTop)
+
+    // Bottom diagonal: from lane card bottom to Response (below grid)
+    const respY = gridRect.height + 4
+    const dxBot = 0 // converge to center
+    const dyBot = respY - cardBottom
+    // Converge toward center column
+    const convergeX = gridRect.width / 2
+    const dxConv = convergeX - laneCenterX
+    const dyConv = respY - cardBottom
+    const lenBot = Math.sqrt(dxConv*dxConv + dyConv*dyConv)
+    const angleBot = Math.atan2(dyConv, dxConv) * 180 / Math.PI
+    const lineBot = document.createElement('div')
+    lineBot.className = 'branch-diag-line'
+    lineBot.dataset.diag = lane.dataset.tier + '-bot'
+    lineBot.style.cssText = `left:${laneCenterX}px;top:${cardBottom}px;width:${lenBot}px;transform:rotate(${angleBot}deg)`
+    diag.appendChild(lineBot)
+  })
+}
+
+// ─── Matrix Rain ──────────────────────────────────────
+let matrixAnimId = null
+const MATRIX_CHARS = 'ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ1234567890ABCDEF'
+
+function startMatrixRain(containerId, tier, duration){
+  // Respect reduced-motion preference
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+  const container = document.getElementById(containerId)
+  const canvas = document.getElementById('matrixCanvas')
+  if(!canvas || !container) return
+
+  // Size canvas to container
+  const rect = container.getBoundingClientRect()
+  canvas.width = rect.width * 2 // Retina
+  canvas.height = rect.height * 2
+  canvas.style.width = rect.width + 'px'
+  canvas.style.height = rect.height + 'px'
+  const ctx = canvas.getContext('2d')
+  ctx.scale(2, 2)
+
+  canvas.classList.add('active')
+
+  // Find active lane position
+  const lane = container.querySelector(`.branch-lane[data-tier="${tier}"]`)
+  const routerEl = document.querySelector('[data-stage="router"]')
+  if(!lane || !routerEl){ canvas.classList.remove('active'); return }
+
+  const laneRect = lane.getBoundingClientRect()
+  const contRect = container.getBoundingClientRect()
+  const routerRect = routerEl.getBoundingClientRect()
+
+  // Rain columns along the active path
+  const cols = []
+  const nCols = 8  // reduced from 15 for performance
+  const centerX = (laneRect.left + laneRect.right) / 2 - contRect.left
+  const routerX = routerRect.left - contRect.left + routerRect.width / 2
+  const routerY = routerRect.top - contRect.top + routerRect.height / 2
+  const laneTopY = laneRect.top - contRect.top
+  const laneBotY = laneRect.bottom - contRect.top
+
+  // Create drops along the diagonal path
+  for(let i = 0; i < nCols; i++){
+    const t = i / nCols
+    const x = routerX + (centerX - routerX) * t
+    const y = routerY + (laneTopY - routerY) * t
+    cols.push({
+      x: x + (Math.random() - 0.5) * 30,
+      y: y,
+      speed: 2 + Math.random() * 4,
+      chars: [],
+      length: 5 + Math.floor(Math.random() * 10),
+      startOffset: Math.random() * 100,
+    })
+  }
+
+  // Rain drops on the lane card
+  for(let i = 0; i < 4; i++){
+    cols.push({
+      x: centerX + (Math.random() - 0.5) * laneRect.width * 0.6,
+      y: laneTopY + Math.random() * (laneBotY - laneTopY),
+      speed: 1.5 + Math.random() * 3,
+      chars: [],
+      length: 4 + Math.floor(Math.random() * 8),
+      startOffset: Math.random() * 80,
+    })
+  }
+
+  let startTime = Date.now()
+  let frame = 0
+
+  function drawRain(){
+    const elapsed = Date.now() - startTime
+    if(elapsed > duration){
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      canvas.classList.remove('active')
+      return
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    frame++
+
+    cols.forEach(col => {
+      const dropStart = col.y - ((frame + col.startOffset) * col.speed) % (canvas.height + 50)
+      for(let j = 0; j < col.length; j++){
+        const cy = dropStart + j * 14
+        if(cy < -20 || cy > canvas.height) continue
+        const char = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)]
+        const alpha = j === 0 ? 1 : Math.max(0, 1 - (j / col.length) * 0.8)
+        const size = j === 0 ? 13 : 11
+        ctx.font = `${size}px monospace`
+        ctx.fillStyle = `rgba(0,255,65,${alpha})`
+        if(j === 0){
+          ctx.shadowColor = '#00ff41'
+          ctx.shadowBlur = 8
+        } else {
+          ctx.shadowBlur = 0
+        }
+        ctx.fillText(char, col.x, cy)
+      }
+    })
+    ctx.shadowBlur = 0
+    matrixAnimId = requestAnimationFrame(drawRain)
+  }
+
+  if(matrixAnimId) cancelAnimationFrame(matrixAnimId)
+  drawRain()
+}
+function animatePipeline(result){
+  if(state.killed) return
+  const r = result.routing || {}
+  const tier = r.tier || '—'
+  const provider = r.provider || 'bedrock'
+  const model = r.model_id || '—'
+  const latency = r.latency_ms || 0
+  const weight = r.lb_weight || 100
+  const targets = result.lb_targets || []
+
+  // Reset all
+  document.querySelectorAll('.pipeline-stage').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.pipeline-arrow').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.branch-lane').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.branch-path').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.branch-diag-line').forEach(el => el.classList.remove('active'))
+  // Stop matrix rain
+  if(matrixAnimId){ cancelAnimationFrame(matrixAnimId); matrixAnimId = null }
+  const mc = document.getElementById('matrixCanvas')
+  if(mc) mc.classList.remove('active')
+
+  // Populate ALL branch cards with defaults or targets
+  const defaultTargets = {
+    simple: {model:'Claude 3.5 Haiku', provider:'bedrock', weight:80, icon:'🌿'},
+    medium: {model:'Sonnet 4', provider:'bedrock', weight:15, icon:'⚖️'},
+    hard: {model:'Opus 4.8', provider:'bedrock', weight:5, icon:'🔥'},
+  }
+  // Override active tier with real data
+  if(tier && tier !== '—'){
+    defaultTargets[tier] = {
+      model: model,
+      provider: provider,
+      weight: weight,
+      icon: PROVIDER_ICONS[provider] || '☁️',
+    }
+  }
+  // Apply to all lanes
+  Object.keys(defaultTargets).forEach(t => {
+    const d = defaultTargets[t]
+    document.getElementById(`${t}Model`).textContent = d.model
+    document.getElementById(`${t}Provider`).textContent = d.provider
+    document.getElementById(`${t}Weight`).textContent = `${d.weight}%`
+    document.getElementById(`${t}Icon`).textContent = d.icon
+    document.getElementById(`${t}Profile`).textContent = t === tier ? `${provider} · ${model}` : '—'
+  })
+  // Update classifier/router labels
+  document.getElementById('classifierResult').textContent = tier
+  document.getElementById('routerResult').textContent = `${provider} → ${model}`
+
+  // Animate: common path → branch → response
+  const stages = ['user','api','classifier','router']
+  const arrows = ['user-gw','gw-classifier','classifier-router']
+
+  stages.forEach((s,i) => {
+    setTimeout(() => {
+      document.querySelector(`[data-stage="${s}"]`).classList.add('active')
+      if(i > 0) document.querySelector(`[data-conn="${arrows[i-1]}"]`).classList.add('active')
+    }, i * 250)
+  })
+
+  // Activate branch lane + paths + diagonals after router
+  setTimeout(() => {
+    if(tier && tier !== '—'){
+      const lane = document.querySelector(`.branch-lane[data-tier="${tier}"]`)
+      if(lane){
+        lane.classList.add('active')
+        // Activate path lines
+        lane.querySelectorAll('.branch-path').forEach(el => el.classList.add('active'))
+        // Activate diagonal lines
+        document.querySelectorAll(`.branch-diag-line[data-diag^="${tier}"]`).forEach(el => el.classList.add('active'))
+      }
+      // Start Matrix rain along active path
+      startMatrixRain('pipeline-wrap', tier, 1800)
+    }
+  }, 1100)
+
+  // Activate converge arrow and response
+  setTimeout(() => {
+    document.querySelector('[data-conn="converge"]').classList.add('active')
+    document.querySelector('[data-stage="response"]').classList.add('active')
+    document.getElementById('responseLatency').textContent = `${latency}ms`
+    // Flash
+    const dot = document.getElementById('statusDot')
+    dot.style.boxShadow = '0 0 20px rgba(26,125,212,.6)'
+    setTimeout(() => dot.style.boxShadow = '', 500)
+  }, 1400)
+}
+
+// ─── Add request log ──────────────────────────────────
+function addRequestLog(result, promptText){
+  const r = result.routing || {}
+  const tier = r.tier || 'error'
+  const provider = r.provider || '—'
+  const model = r.model_id || '—'
+  const latency = r.latency_ms || 0
+  const usage = result.usage || {}
+  const response = result.response || ''
+  const classification = result.classification || {}
+
+  // Use provided prompt text or fall back to input field
+  const loggedPrompt = promptText || document.getElementById('promptInput').value || 'Simulated request'
+
+  // Update state
+  state.logId++
+  state.requests.unshift({
+    id: state.logId,
+    time: new Date(),
+    prompt: loggedPrompt,
+    tier, provider, model, latency, usage, response, classification,
+    inference_profile: r.inference_profile || null,
+    mode: r.mode || 'direct',
+    region: r.region || '—',
+    lbWeight: r.lb_weight || 100,
+    lbTargets: result.lb_targets || [{provider: provider, model_id: model, weight: 100}],
+  })
+
+  if(tier === 'simple') state.byTier.simple++
+  else if(tier === 'medium') state.byTier.medium++
+  else if(tier === 'hard') state.byTier.hard++
+  else {/* error */}
+
+  if(provider === 'bedrock') state.byProvider.bedrock++
+  else if(provider === 'openai') state.byProvider.openai++
+  else if(provider === 'kimi') state.byProvider.kimi++
+
+  // Time bucket
+  const now = Date.now()
+  state.timeBuckets.push({time:now, tier})
+  state.timeBuckets = state.timeBuckets.filter(b => now - b.time < 30000)
+
+  animatePipeline(result)
+  updateUI()
+  renderLog()
+  renderChart()
+  renderDonut()
+}
+
+// ─── Update UI stats ──────────────────────────────────
+function updateUI(){
+  const total = state.byTier.simple + state.byTier.medium + state.byTier.hard
+  document.getElementById('totalRequests').textContent = total
+  document.getElementById('simpleCount').textContent = state.byTier.simple
+  document.getElementById('mediumCount').textContent = state.byTier.medium
+  document.getElementById('hardCount').textContent = state.byTier.hard
+
+  const sp = total ? (state.byTier.simple/total*100).toFixed(0) : 0
+  const mp = total ? (state.byTier.medium/total*100).toFixed(0) : 0
+  const hp = total ? (state.byTier.hard/total*100).toFixed(0) : 0
+  document.getElementById('simplePct').textContent = `${sp}%`
+  document.getElementById('mediumPct').textContent = `${mp}%`
+  document.getElementById('hardPct').textContent = `${hp}%`
+}
+
+// ─── Render log table ─────────────────────────────────
+function renderLog(){
+  const tbody = document.getElementById('logBody')
+  if(state.requests.length === 0){
+    tbody.innerHTML = '<tr><td colspan="7" class="log-empty">No requests yet — type a prompt or click Simulate</td></tr>'
+    return
+  }
+
+  tbody.innerHTML = state.requests.slice(0, 50).map(req => {
+    const time = req.time.toLocaleTimeString()
+    const rawPrompt = req.prompt.length > 50 ? req.prompt.substring(0,50)+'…' : req.prompt
+    const prompt = escapeHtml(rawPrompt)
+    const tierClass = `tier-${req.tier}`
+    const providerClass = `provider-${req.provider}`
+    const lat = req.latency < 1000 ? `${req.latency}ms` : `${(req.latency/1000).toFixed(1)}s`
+    const tok = req.usage.total_tokens || '—'
+
+    return `<tr onclick="showDetail(${req.id})" style="cursor:pointer">
+      <td>${time}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${prompt}</td>
+      <td><span class="tier-badge ${tierClass}">${escapeHtml(req.tier)}</span></td>
+      <td><span class="provider-badge"><span class="provider-dot ${providerClass}"></span>${escapeHtml(req.provider)}</span></td>
+      <td style="color:var(--text)">${escapeHtml(req.model)}</td>
+      <td><span style="font-size:10px;color:var(--text-muted)">${req.lbWeight || 100}%</span></td>
+      <td>${lat}</td>
+      <td>${tok}</td>
+    </tr>`
+  }).join('')
+}
+
+// ─── Render chart ─────────────────────────────────────
+function renderChart(){
+  const container = document.getElementById('chartContainer')
+  const buckets = 30
+  const now = Date.now()
+  const period = 30000
+  const interval = period / buckets
+
+  const data = Array(buckets).fill(0).map((_,i) => {
+    const start = now - period + i * interval
+    const end = start + interval
+    return state.timeBuckets.filter(b => b.time >= start && b.time < end).length
+  })
+
+  const max = Math.max(...data, 1)
+
+  container.innerHTML = `<div class="bar-group">${data.map((v,i) => `
+    <div class="bar-item">
+      <div class="bar-fill" style="height:${(v/max*100).toFixed(0)}%;background:var(--accent);opacity:${.4 + (v/max)*.6}" data-count="${v}"></div>
+      <div class="bar-label">${i % 5 === 0 ? '-'+((buckets-i)/6).toFixed(0)+'s' : ''}</div>
+    </div>
+  `).join('')}</div>`
+}
+
+// ─── Render donut ─────────────────────────────────────
+function renderDonut(){
+  const svg = document.getElementById('donutSvg')
+  const total = state.byProvider.bedrock + state.byProvider.openai + state.byProvider.kimi
+  if(total === 0) return
+
+  const data = [
+    {key:'bedrock', val:state.byProvider.bedrock, color:'#1a7dd4'},
+    {key:'openai', val:state.byProvider.openai, color:'#2ecc71'},
+    {key:'kimi', val:state.byProvider.kimi, color:'#9b59b6'},
+  ].filter(d => d.val > 0)
+
+  const circumference = 2 * Math.PI * 40 // r=40
+  let offset = 0
+  let pathHtml = ''
+
+  data.forEach((d,i) => {
+    const pct = d.val / total
+    const dashLen = pct * circumference
+    pathHtml += `<circle cx="50" cy="50" r="40" fill="none" stroke="${d.color}" stroke-width="12"
+      stroke-dasharray="${dashLen} ${circumference - dashLen}"
+      stroke-dashoffset="${-offset}"
+      transform="rotate(-90 50 50)"
+      style="transition:stroke-dasharray .6s ease"/>
+      <text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="700" fill="var(--text)">${total}</text>`
+    offset += dashLen
+  })
+
+  svg.innerHTML = pathHtml
+
+  // Update legend
+  document.querySelectorAll('.donut-item').forEach(el => {
+    const name = el.querySelector('.name').textContent.toLowerCase()
+    const d = data.find(x => x.key === name)
+    el.querySelector('.pct').textContent = d ? (d.val/total*100).toFixed(0)+'%' : '0%'
+  })
+}
+
+// ─── Show detail modal ────────────────────────────────
+function showDetail(id){
+  const req = state.requests.find(r => r.id === id)
+  if(!req) return
+
+  document.getElementById('modalTitle').textContent = `Request #${req.id}`
+  const rows = [
+    ['Time', req.time.toLocaleTimeString()],
+    ['Prompt', escapeHtml(req.prompt)],
+    ['Tier', `<span class="tier-badge tier-${req.tier}">${escapeHtml(req.tier)}</span>`],
+    ['Provider', escapeHtml(req.provider)],
+    ['Model', escapeHtml(req.model)],
+    ['LB Weight', `${req.lbWeight || 100}%`],
+    ['LB Targets', (req.lbTargets || []).map(t => `${escapeHtml(t.provider)} (${escapeHtml(t.model_id)}) ${t.weight}%`).join('<br>') || '—'],
+    ['Mode', escapeHtml(req.mode)],
+    ['Inference Profile', escapeHtml(req.inference_profile) || 'N/A (direct)'],
+    ['Latency', `${req.latency}ms`],
+    ['Input Tokens', req.usage.input_tokens || '—'],
+    ['Output Tokens', req.usage.output_tokens || '—'],
+    ['Total Tokens', req.usage.total_tokens || '—'],
+    ['Region', escapeHtml(req.region)],
+    ['Classification', escapeHtml(req.classification.reason) || '—'],
+    ['Response', `<div style="max-height:120px;overflow-y:auto;color:var(--text)">${escapeHtml(req.response) || '—'}</div>`],
+  ]
+
+  document.getElementById('modalTable').innerHTML = rows.map(([k,v]) =>
+    `<tr><td>${k}</td><td>${v}</td></tr>`
+  ).join('')
+  document.getElementById('modalOverlay').classList.add('open')
+}
+
+function closeModal(){
+  document.getElementById('modalOverlay').classList.remove('open')
+}
+
+// ─── Reset ────────────────────────────────────────────
+function resetLogs(){
+  state.requests = []
+  state.byTier = {simple:0, medium:0, hard:0}
+  state.byProvider = {bedrock:0, openai:0, kimi:0}
+  state.timeBuckets = []
+  state.logId = 0
+  updateUI()
+  renderLog()
+  renderChart()
+  renderDonut()
+  // Reset pipeline
+  document.querySelectorAll('.pipeline-stage').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.pipeline-arrow').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.branch-lane').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.branch-path').forEach(el => el.classList.remove('active'))
+  document.querySelectorAll('.branch-diag-line').forEach(el => el.classList.remove('active'))
+  if(matrixAnimId){ cancelAnimationFrame(matrixAnimId); matrixAnimId = null }
+  const mc = document.getElementById('matrixCanvas')
+  if(mc){ mc.classList.remove('active'); mc.getContext('2d').clearRect(0,0,mc.width,mc.height) }
+  document.getElementById('classifierResult').textContent = '—'
+  document.getElementById('routerResult').textContent = '—'
+  document.getElementById('responseLatency').textContent = '—'
+  ;['simple','medium','hard'].forEach(t => {
+    document.getElementById(`${t}Model`).textContent = '—'
+    document.getElementById(`${t}Provider`).textContent = '—'
+    document.getElementById(`${t}Weight`).textContent = '—'
+    document.getElementById(`${t}Profile`).textContent = '—'
+    document.getElementById(`${t}Icon`).textContent = t === 'simple' ? '🌿' : t === 'medium' ? '⚖️' : '🔥'
+  })
+}
+
+// ─── Keyboard shortcut ────────────────────────────────
+document.getElementById('promptInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter') sendPrompt()
+})
+</script>
+</body>
+</html>

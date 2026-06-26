@@ -1,0 +1,30 @@
+{
+  "name": "aws-multi-model-router",
+  "version": "1.0.0",
+  "description": "Multi-model LLM router with prompt classification and cross-region inference on AWS Bedrock",
+  "bin": {
+    "aws-multi-model-router": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --require-approval never",
+    "diff": "cdk diff"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "22.14.1",
+    "aws-cdk": "^2.190.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.2",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.8.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.190.0",
+    "constructs": "^10.4.2"
+  }
+}

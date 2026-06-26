@@ -1,0 +1,5 @@
+# AWS Lambda Python runtime includes boto3 and botocore by default.
+# This file exists for local development and test reproducibility.
+# No additional dependencies beyond the AWS SDK.
+boto3>=1.36
+botocore>=1.36

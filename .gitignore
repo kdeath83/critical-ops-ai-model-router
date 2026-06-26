@@ -1,0 +1,16 @@
+node_modules/
+dist/
+cdk.out/
+cdk.context.json
+*.js.map
+*.d.ts
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.DS_Store
+*.swp
+*.swo
+.env
+credentials
+*.log
